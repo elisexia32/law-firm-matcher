@@ -1,0 +1,57 @@
+[
+  {
+    "id": 1,
+    "name": "Altman, Strautins, & Kromm, LLC",
+    "normalized_name": "ALTMAN STRAUTINS KROMM",
+    "client": "NewRez",
+    "phase": "Wave 1",
+    "status": "Pending Review",
+    "notes": "From NRZ attorney network - FCL/BK",
+    "created_at": "2026-02-17T10:00:00",
+    "updated_at": "2026-02-17T10:00:00"
+  },
+  {
+    "id": 2,
+    "name": "Baer & Timberlake, P.C.",
+    "normalized_name": "BAER TIMBERLAKE",
+    "client": "NewRez",
+    "phase": "Wave 1",
+    "status": "Pending Review",
+    "notes": "From NRZ attorney network - FCL/BK",
+    "created_at": "2026-02-17T10:00:00",
+    "updated_at": "2026-02-17T10:00:00"
+  },
+  {
+    "id": 3,
+    "name": "Cohn, Goldberg & Deutsch, LLC",
+    "normalized_name": "COHN GOLDBERG DEUTSCH",
+    "client": "NewRez",
+    "phase": "Wave 2",
+    "status": "Pending Review",
+    "notes": "From NRZ attorney network - FCL/BK/Recovery",
+    "created_at": "2026-02-17T10:00:00",
+    "updated_at": "2026-02-17T10:00:00"
+  },
+  {
+    "id": 4,
+    "name": "Davidson Fink LLP",
+    "normalized_name": "DAVIDSON FINK",
+    "client": "NewRez",
+    "phase": "Wave 2",
+    "status": "Pending Review",
+    "notes": "From NRZ attorney network - FCL/BK",
+    "created_at": "2026-02-17T10:00:00",
+    "updated_at": "2026-02-17T10:00:00"
+  },
+  {
+    "id": 5,
+    "name": "Greenspoon Marder LLP",
+    "normalized_name": "GREENSPOON MARDER",
+    "client": "NewRez",
+    "phase": "Wave 2",
+    "status": "Pending Review",
+    "notes": "From NRZ attorney network - FCL/BK",
+    "created_at": "2026-02-17T10:00:00",
+    "updated_at": "2026-02-17T10:00:00"
+  }
+]

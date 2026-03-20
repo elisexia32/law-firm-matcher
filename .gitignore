@@ -1,0 +1,4 @@
+venv/
+data/law_firms.db
+__pycache__/
+*.pyc
