@@ -170,6 +170,29 @@ class ServicerListEntry(Base):
     )
 
 
+class ValonosEntity(Base):
+    """A law firm entity as it exists in ValonOS production (servicer_law_firms table)."""
+    __tablename__ = "valonos_entities"
+
+    id = Column(Integer, primary_key=True)
+    sid = Column(String(50), nullable=False, unique=True)  # ValonOS SID
+    name = Column(String(255), nullable=False)
+    tenant_key = Column(Integer, nullable=False)
+    tenant_name = Column(String(100), default="")
+    is_active = Column(Boolean, default=True)
+    indexed_firm_id = Column(Integer, ForeignKey("indexed_firms.id"), nullable=True)
+    synced_at = Column(DateTime, default=datetime.utcnow)
+
+    indexed_firm = relationship("IndexedFirm", backref="valonos_entities")
+
+    __table_args__ = (
+        Index("ix_valonos_entity_name", "name"),
+    )
+
+    def __repr__(self):
+        return f"<ValonosEntity('{self.name}', tenant={self.tenant_name}, active={self.is_active})>"
+
+
 def get_engine(db_path="data/law_firms.db"):
     return create_engine(f"sqlite:///{db_path}", echo=False)
 

@@ -1,16 +1,16 @@
 """
 Law Firm Matcher v3 - Streamlit App
 
-Two integrated pages:
-  1. Search & Index — hero search, tiered results, click-to-associate, firm directory
-  2. Onboard Firms  — upload → dedupe → inline review → wave assignment (one flow)
+Two pages:
+  1. Search & Index — hero search, tiered results, firm directory, list ingestion + mapping export
+  2. Firm Tracker   — onboarding status synced from Google Sheet
 """
 import streamlit as st
 import pandas as pd
 from pathlib import Path
 from models import (
     get_session, IndexedFirm, Moniker, MaRule,
-    FirmTracker, ServicerList, ServicerListEntry
+    FirmTracker, ServicerList, ServicerListEntry, ValonosEntity
 )
 from db import (
     get_all_firms, get_firm_by_id, get_firm_by_name,
@@ -62,7 +62,7 @@ def _onboarding_badge(firm):
 st.sidebar.title("⚖️ Law Firm Matcher")
 page = st.sidebar.radio(
     "Navigate",
-    ["Search & Index", "Firm Tracker", "Ingest List"],
+    ["Search & Index", "Firm Tracker"],
     label_visibility="collapsed",
 )
 
@@ -79,7 +79,7 @@ c3.metric("M&A Rules", rule_count)
 if inactive_count:
     st.sidebar.caption(f"{inactive_count} inactive firm{'s' if inactive_count != 1 else ''}")
 st.sidebar.divider()
-st.sidebar.caption("v3.0")
+st.sidebar.caption("v3.1")
 
 
 # ===================================================================
@@ -106,7 +106,6 @@ if page == "Search & Index":
         low = [r for r in results if r["score"] < 70]
 
         if high:
-            # ----- confident matches -----
             for r in high:
                 firm = r["firm"]
                 monikers = get_monikers_for_firm(session, firm.id)
@@ -121,10 +120,16 @@ if page == "Search & Index":
                 status = "✅" if firm.is_active else "⛔ inactive"
                 onboarding = _onboarding_badge(firm)
                 st.markdown(f"### {firm.name} {status}{badge}{onboarding}")
+                # Show ValonOS entity names
+                firm_valonos = session.query(ValonosEntity).filter(
+                    ValonosEntity.indexed_firm_id == firm.id
+                ).all()
+                if firm_valonos:
+                    vnames = ", ".join(f"{v.name} ({v.tenant_name})" for v in firm_valonos)
+                    st.caption(f"ValonOS: {vnames}")
                 if monikers:
                     st.caption("Also known as: " + ", ".join(m.name for m in monikers))
 
-                # Quick-associate right from search
                 with st.expander("Associate this search term as a moniker"):
                     ac1, ac2 = st.columns([2, 1])
                     with ac1:
@@ -135,7 +140,6 @@ if page == "Search & Index":
                             st.success(f"Linked '{query.strip()}' → {firm.name}")
                             st.rerun()
 
-            # ----- medium confidence -----
             if medium:
                 st.divider()
                 st.markdown("###### Other possible matches")
@@ -152,7 +156,6 @@ if page == "Search & Index":
                             st.rerun()
 
         elif medium:
-            # ----- no high confidence, but some medium -----
             st.info("Hmm, no strong match found.")
             st.markdown("###### Could this be associated with:")
             for r in medium:
@@ -171,7 +174,6 @@ if page == "Search & Index":
                         st.rerun()
 
         else:
-            # ----- nothing useful -----
             st.warning("Hmm, I couldn't find anything.")
             if low:
                 st.markdown(
@@ -196,7 +198,164 @@ if page == "Search & Index":
                 st.rerun()
 
     # ------------------------------------------------------------------
-    # Firm directory (below search)
+    # Upload & Ingest (always visible, collapsed by default)
+    # ------------------------------------------------------------------
+    st.divider()
+    with st.expander("📤 Upload a servicer list to dedupe & map"):
+        st.caption("Upload → auto-dedupe against the index → review → export mapping for eng.")
+
+        ic1, ic2 = st.columns(2)
+        with ic1:
+            servicer = st.selectbox("Servicer", SERVICERS)
+        with ic2:
+            list_label = st.text_input("Label (optional)", placeholder="e.g., Q1 2026 refresh")
+
+        uploaded = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
+
+        if uploaded:
+            if uploaded.name.endswith(".xlsx"):
+                df = pd.read_excel(uploaded)
+            else:
+                df = pd.read_csv(uploaded)
+
+            st.dataframe(df.head(10), use_container_width=True, hide_index=True)
+            name_col = st.selectbox("Column containing firm names", df.columns.tolist())
+
+            if st.button("Run Dedupe & Match", type="primary"):
+                raw_names = df[name_col].dropna().tolist()
+                with st.spinner(f"Matching {len(raw_names)} firms against the index..."):
+                    sl = create_servicer_list(session, servicer, list_label or "", uploaded.name)
+                    results = ingest_firm_list(session, sl.id, raw_names)
+                st.session_state["ingest_list_id"] = sl.id
+                st.session_state["ingest_results"] = results
+
+    # Review results (shown outside the expander so they stay visible)
+    list_id = st.session_state.get("ingest_list_id")
+    ingest_results = st.session_state.get("ingest_results")
+
+    if list_id and ingest_results:
+        st.subheader("Review matches")
+
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.metric("Auto-matched", len(ingest_results["auto_matched"]))
+        mc2.metric("Needs Review", len(ingest_results["review"]))
+        mc3.metric("New Firms", len(ingest_results["new"]))
+
+        entries = session.query(ServicerListEntry).filter(
+            ServicerListEntry.servicer_list_id == list_id
+        ).all()
+
+        if ingest_results["auto_matched"]:
+            with st.expander(f"Auto-matched ({len(ingest_results['auto_matched'])})", expanded=False):
+                for item in ingest_results["auto_matched"]:
+                    st.markdown(f"**{item['raw_name']}** → {item['matched_to']}  `{item['score']:.0f}%`  _{item['via']}_")
+
+        if ingest_results["review"]:
+            with st.expander(f"Needs Review ({len(ingest_results['review'])})", expanded=True):
+                for item in ingest_results["review"]:
+                    entry = next((e for e in entries if e.raw_name == item["raw_name"] and e.match_status == "review"), None)
+                    if not entry:
+                        continue
+                    st.markdown(f"**{item['raw_name']}** → suggested: **{item['matched_to']}** `{item['score']:.0f}%`")
+                    rc1, rc2, rc3 = st.columns([1, 1, 3])
+                    with rc1:
+                        if st.button("Confirm", key=f"conf_{entry.id}"):
+                            confirm_match(session, entry.id)
+                            st.rerun()
+                    with rc2:
+                        if st.button("Reject", key=f"rej_{entry.id}"):
+                            reject_match(session, entry.id)
+                            st.rerun()
+                    with rc3:
+                        all_firms = get_all_firms(session)
+                        firm_opts = {f.name: f.id for f in all_firms}
+                        reassign = st.selectbox("Reassign to", options=[""] + list(firm_opts.keys()), key=f"reassign_{entry.id}", label_visibility="collapsed")
+                        if reassign and st.button("Reassign", key=f"do_reassign_{entry.id}"):
+                            confirm_match(session, entry.id, firm_opts[reassign])
+                            st.rerun()
+                    st.divider()
+
+        if ingest_results["new"]:
+            with st.expander(f"New Firms ({len(ingest_results['new'])})", expanded=True):
+                for item in ingest_results["new"]:
+                    entry = next((e for e in entries if e.raw_name == item["raw_name"] and e.match_status == "new"), None)
+                    if not entry:
+                        continue
+                    nc1, nc2 = st.columns([3, 1])
+                    with nc1:
+                        st.markdown(f"**{item['raw_name']}**")
+                        if item.get("best_candidate"):
+                            st.caption(f"Closest: {item['best_candidate']} ({item['score']:.0f}%)")
+                    with nc2:
+                        if st.button("Add to Index", key=f"addidx_{entry.id}"):
+                            new_firm = create_firm(session, item["raw_name"])
+                            confirm_match(session, entry.id, new_firm.id)
+                            upsert_tracker(session, new_firm.id, interaction="Planned engagement")
+                            st.success(f"Indexed & tracked: {new_firm.name}")
+                            st.rerun()
+
+        # --- Export mapping ---
+        st.divider()
+        st.subheader("Export mapping")
+        st.caption(
+            "Download the client → ValonOS name mapping for eng. "
+            "Only includes confirmed and auto-matched entries."
+        )
+
+        resolved_entries = session.query(ServicerListEntry).filter(
+            ServicerListEntry.servicer_list_id == list_id,
+            ServicerListEntry.match_status.in_(["auto_matched", "confirmed"]),
+        ).all()
+
+        if resolved_entries:
+            mapping_rows = []
+            for e in resolved_entries:
+                firm = get_firm_by_id(session, e.matched_firm_id) if e.matched_firm_id else None
+                if firm:
+                    valonos_ent = session.query(ValonosEntity).filter(
+                        ValonosEntity.indexed_firm_id == firm.id,
+                        ValonosEntity.tenant_key == 1,
+                    ).first()
+                    mapping_rows.append({
+                        "client_law_firm_name": e.raw_name,
+                        "indexed_name": firm.name,
+                        "valonos_entity_name": valonos_ent.name if valonos_ent else "",
+                        "match_score": round(e.match_score, 1) if e.match_score else None,
+                        "match_status": e.match_status,
+                    })
+
+            if mapping_rows:
+                mapping_df = pd.DataFrame(mapping_rows)
+                st.dataframe(mapping_df, use_container_width=True, hide_index=True)
+
+                ec1, ec2 = st.columns(2)
+                with ec1:
+                    csv_data = mapping_df.to_csv(index=False)
+                    st.download_button(
+                        "Download CSV",
+                        csv_data,
+                        "law_firm_mapping.csv",
+                        "text/csv",
+                    )
+                with ec2:
+                    import json as _json
+                    json_mapping = {
+                        r["client_law_firm_name"]: r["valonos_entity_name"] or r["indexed_name"]
+                        for r in mapping_rows
+                    }
+                    st.download_button(
+                        "Download JSON",
+                        _json.dumps(json_mapping, indent=2),
+                        "law_firm_mapping.json",
+                        "application/json",
+                    )
+            else:
+                st.info("No resolved mappings yet. Confirm matches above first.")
+        else:
+            st.info("No resolved mappings yet. Confirm matches above first.")
+
+    # ------------------------------------------------------------------
+    # Firm directory (always visible)
     # ------------------------------------------------------------------
     st.divider()
 
@@ -214,28 +373,61 @@ if page == "Search & Index":
 
     st.subheader(f"Indexed Firms ({len(firms)})")
 
-    # Add new firm inline
-    with st.expander("➕ Add New Firm"):
-        nc1, nc2 = st.columns([3, 1])
-        with nc1:
-            new_name = st.text_input("Firm name", key="new_firm_name")
-        with nc2:
-            new_notes = st.text_input("Notes", key="new_firm_notes")
-        if st.button("Add Firm", key="add_firm_btn"):
-            if new_name:
-                existing = get_firm_by_name(session, new_name)
-                if existing:
-                    st.error(f"Already exists: {existing.name}")
-                else:
-                    create_firm(session, new_name, new_notes)
-                    st.success(f"Added: {new_name}")
+    # ValonOS sync + Add firm side by side
+    tool_col1, tool_col2 = st.columns(2)
+    with tool_col1:
+        with st.expander("🔗 Sync ValonOS Entities"):
+            st.caption("Pull law firm entities from ValonOS production and auto-match to indexed firms.")
+            if st.button("Sync from BigQuery", type="primary", key="valonos_sync"):
+                from valonos_sync import sync_valonos_entities
+                try:
+                    with st.spinner("Querying BigQuery..."):
+                        result = sync_valonos_entities(session)
+                    st.success(
+                        f"Synced {result['total']} entities: "
+                        f"{result['matched']} matched, {len(result['unmatched'])} unmatched."
+                    )
+                    if result["unmatched"]:
+                        unique_unmatched = sorted(set(result["unmatched"]))
+                        st.warning(
+                            f"Unmatched: {', '.join(unique_unmatched[:10])}"
+                            + ("..." if len(unique_unmatched) > 10 else "")
+                        )
                     st.rerun()
+                except Exception as e:
+                    st.error(f"Sync failed: {e}")
+    with tool_col2:
+        with st.expander("➕ Add New Firm"):
+            nc1, nc2 = st.columns([3, 1])
+            with nc1:
+                new_name = st.text_input("Firm name", key="new_firm_name")
+            with nc2:
+                new_notes = st.text_input("Notes", key="new_firm_notes")
+            if st.button("Add Firm", key="add_firm_btn"):
+                if new_name:
+                    existing = get_firm_by_name(session, new_name)
+                    if existing:
+                        st.error(f"Already exists: {existing.name}")
+                    else:
+                        create_firm(session, new_name, new_notes)
+                        st.success(f"Added: {new_name}")
+                        st.rerun()
 
-    # Firm list
+    # Pre-load ValonOS entities for all firms
+    all_valonos = session.query(ValonosEntity).all()
+    valonos_by_firm = {}
+    for v in all_valonos:
+        if v.indexed_firm_id:
+            valonos_by_firm.setdefault(v.indexed_firm_id, []).append(v)
+
     for firm in firms:
         monikers = get_monikers_for_firm(session, firm.id)
         moniker_str = ", ".join(
             f"{m.name} ({m.source})" if m.source else m.name for m in monikers
+        )
+        valonos_ents = valonos_by_firm.get(firm.id, [])
+        valonos_str = ", ".join(
+            f"{v.name} ({v.tenant_name})" for v in valonos_ents
         )
 
         with st.container():
@@ -244,7 +436,9 @@ if page == "Search & Index":
                 status_icon = "" if firm.is_active else " ⛔"
                 onboarding = _onboarding_badge(firm)
                 st.markdown(f"**{firm.name}**{status_icon}{onboarding}")
-                if firm.notes:
+                if valonos_str:
+                    st.caption(f"ValonOS: {valonos_str}")
+                elif firm.notes:
                     st.caption(firm.notes)
             with col2:
                 if moniker_str:
@@ -255,7 +449,6 @@ if page == "Search & Index":
                 if st.button("Edit", key=f"edit_{firm.id}"):
                     st.session_state[f"editing_{firm.id}"] = not st.session_state.get(f"editing_{firm.id}", False)
 
-            # Inline edit panel (monikers + M&A + status all in one place)
             if st.session_state.get(f"editing_{firm.id}"):
                 with st.container():
                     ec1, ec2 = st.columns(2)
@@ -286,7 +479,6 @@ if page == "Search & Index":
                                     add_moniker(session, firm.id, new_mon, new_src)
                                     st.rerun()
 
-                        # M&A rules for this firm
                         firm_rules = [r for r in get_all_ma_rules(session) if r.acquiring_firm_id == firm.id]
                         if firm_rules:
                             st.markdown("**M&A Rules**")
@@ -299,7 +491,6 @@ if page == "Search & Index":
                                         delete_ma_rule(session, rule.id)
                                         st.rerun()
 
-                        # Add M&A rule inline
                         st.markdown("**Add M&A Rule**")
                         mr1, mr2, mr3 = st.columns([3, 2, 1])
                         with mr1:
@@ -325,13 +516,76 @@ if page == "Search & Index":
 
             st.divider()
 
+    # Past ingestions (at the bottom)
+    lists = get_all_servicer_lists(session)
+    if lists:
+        st.subheader("Past Ingestions")
+        for sl in lists:
+            sl_entries = session.query(ServicerListEntry).filter(
+                ServicerListEntry.servicer_list_id == sl.id
+            ).all()
+            statuses = {}
+            for e in sl_entries:
+                statuses[e.match_status] = statuses.get(e.match_status, 0) + 1
+
+            with st.expander(
+                f"{sl.servicer_name} — {sl.milestone or sl.filename} "
+                f"({len(sl_entries)} firms) — {sl.uploaded_at.strftime('%Y-%m-%d %H:%M')}"
+            ):
+                st.caption(f"Status: {statuses}")
+
+                resolved = [e for e in sl_entries if e.match_status in ("auto_matched", "confirmed") and e.matched_firm_id]
+                if resolved:
+                    past_mapping = []
+                    for e in resolved:
+                        firm = get_firm_by_id(session, e.matched_firm_id)
+                        past_mapping.append({
+                            "client_law_firm_name": e.raw_name,
+                            "valon_law_firm_name": firm.name if firm else "—",
+                            "match_score": round(e.match_score, 1) if e.match_score else None,
+                            "match_status": e.match_status,
+                        })
+                    past_df = pd.DataFrame(past_mapping)
+                    st.dataframe(past_df, use_container_width=True, hide_index=True)
+
+                    pe1, pe2 = st.columns(2)
+                    with pe1:
+                        st.download_button(
+                            "Download CSV",
+                            past_df.to_csv(index=False),
+                            f"mapping_{sl.servicer_name}_{sl.id}.csv",
+                            "text/csv",
+                            key=f"past_csv_{sl.id}",
+                        )
+                    with pe2:
+                        import json as _json
+                        past_json = {r["client_law_firm_name"]: r["valon_law_firm_name"] for r in past_mapping}
+                        st.download_button(
+                            "Download JSON",
+                            _json.dumps(past_json, indent=2),
+                            f"mapping_{sl.servicer_name}_{sl.id}.json",
+                            "application/json",
+                            key=f"past_json_{sl.id}",
+                        )
+                elif sl_entries:
+                    past_data = []
+                    for e in sl_entries:
+                        firm = get_firm_by_id(session, e.matched_firm_id) if e.matched_firm_id else None
+                        past_data.append({
+                            "Raw Name": e.raw_name,
+                            "Indexed Firm": firm.name if firm else "—",
+                            "Score": f"{e.match_score:.0f}%" if e.match_score else "",
+                            "Status": e.match_status,
+                        })
+                    st.dataframe(pd.DataFrame(past_data), use_container_width=True, hide_index=True)
+
 
 # ===================================================================
 # PAGE 2: FIRM TRACKER
 # ===================================================================
 elif page == "Firm Tracker":
     st.title("Firm Tracker")
-    st.caption("Onboarding status for all indexed firms. Edit inline — this is the source of truth.")
+    st.caption("Onboarding status synced from the live Google Sheet.")
 
     # --- Google Sheets sync ---
     with st.expander("🔄 Sync from Google Sheet"):
@@ -402,11 +656,18 @@ elif page == "Firm Tracker":
 
     st.divider()
 
-    # --- Main table view ---
+    # --- Column view selector ---
     WAVE_OPTIONS = ["", "Pilot", "Wave 1 (Feb 26)", "Wave 2 (March 26)", "Wave 3 (by M3)", "N/A"]
     INTERACTION_OPTIONS = ["", "Design partner", "Intro call", "Planned engagement", "N/A"]
 
-    # Build editable dataframe
+    view = st.radio(
+        "View",
+        ["Onboarding", "Engagement", "Contacts", "All"],
+        horizontal=True,
+        key="tracker_view",
+    )
+
+    # Build full dataframe
     tracker_rows = []
     for t in trackers:
         firm = t.indexed_firm
@@ -414,29 +675,33 @@ elif page == "Firm Tracker":
             "_id": t.id,
             "_firm_id": firm.id,
             "Firm Name": firm.name,
+            # Onboarding view
             "VM?": t.vm_firm,
-            "FCL Cases": t.vm_active_fcl or "",
-            "BK Cases": t.vm_active_bk or "",
-            "NRZ Rank": t.nrz_rank or "",
-            "LC Rank": t.loancare_rank or "",
-            "Design Partner": t.ocean_design_partner,
-            "M1": t.ocean_m1,
+            "Wave": t.proposed_wave or "",
             "M2": t.ocean_m2 or "",
             "M2 Vol": t.ocean_m2_volume or "",
-            "Wave": t.proposed_wave or "",
             "Training": t.live_training if t.live_training is not None else False,
+            "Interaction": t.interaction or "",
             "Wave Notes": t.wave_notes or "",
-            "Last Reach-out": t.last_reachout or "",
+            # Engagement view
+            "Design Partner": t.ocean_design_partner,
+            "M1": t.ocean_m1,
             "Phase 0": t.phase0_meeting,
             "Leadership Mtg": t.leadership_meeting,
             "Design Mtg": t.design_meeting,
             "Leadership Engaged": t.leadership_engagement or "",
-            "Interaction": t.interaction or "",
+            "Last Reach-out": t.last_reachout or "",
+            # Contacts view
             "Ops Email": t.ops_contact_email or "",
             "Leadership": t.leadership_contact or "",
             "Title": t.leadership_title or "",
             "Leadership Email": t.leadership_email or "",
             "NDA By": t.nda_executed_by or "",
+            # Extra detail
+            "FCL Cases": t.vm_active_fcl or "",
+            "BK Cases": t.vm_active_bk or "",
+            "NRZ Rank": t.nrz_rank or "",
+            "LC Rank": t.loancare_rank or "",
             "Notes": t.notes or "",
         })
 
@@ -445,201 +710,90 @@ elif page == "Firm Tracker":
     else:
         df = pd.DataFrame(tracker_rows)
 
-        # Editable table
+        # Select columns based on view
+        always_hidden = ["_id", "_firm_id"]
+        if view == "Onboarding":
+            show_cols = ["Firm Name", "VM?", "Wave", "M2", "M2 Vol", "Training", "Interaction", "Wave Notes"]
+        elif view == "Engagement":
+            show_cols = ["Firm Name", "Wave", "Design Partner", "M1", "Phase 0",
+                         "Leadership Mtg", "Design Mtg", "Leadership Engaged", "Last Reach-out"]
+        elif view == "Contacts":
+            show_cols = ["Firm Name", "Wave", "Interaction", "Ops Email", "Leadership",
+                         "Title", "Leadership Email", "NDA By"]
+        else:  # All
+            show_cols = [c for c in df.columns if c not in always_hidden]
+
+        display_df = df[show_cols]
+
+        # Column configs (only include configs for visible columns)
+        all_column_config = {
+            "VM?": st.column_config.CheckboxColumn("VM?", width="small"),
+            "FCL Cases": st.column_config.TextColumn("FCL", width="small"),
+            "BK Cases": st.column_config.TextColumn("BK", width="small"),
+            "Design Partner": st.column_config.CheckboxColumn("DP", width="small"),
+            "M1": st.column_config.CheckboxColumn("M1", width="small"),
+            "M2": st.column_config.SelectboxColumn("M2", options=["Yes", "No", "Fell off"], width="small"),
+            "M2 Vol": st.column_config.TextColumn("M2 Vol", width="small"),
+            "Wave": st.column_config.SelectboxColumn("Wave", options=WAVE_OPTIONS, width="medium"),
+            "Training": st.column_config.CheckboxColumn("Training", width="small"),
+            "Phase 0": st.column_config.CheckboxColumn("P0", width="small"),
+            "Leadership Mtg": st.column_config.CheckboxColumn("Lead", width="small"),
+            "Design Mtg": st.column_config.CheckboxColumn("Design", width="small"),
+            "Interaction": st.column_config.SelectboxColumn("Interaction", options=INTERACTION_OPTIONS, width="medium"),
+            "NRZ Rank": st.column_config.TextColumn("NRZ", width="small"),
+            "LC Rank": st.column_config.TextColumn("LC", width="small"),
+            "Wave Notes": st.column_config.TextColumn("Wave Notes", width="medium"),
+            "Notes": st.column_config.TextColumn("Notes", width="large"),
+        }
+        visible_config = {k: v for k, v in all_column_config.items() if k in show_cols}
+
         edited_df = st.data_editor(
-            df.drop(columns=["_id", "_firm_id"]),
+            display_df,
             use_container_width=True,
             hide_index=True,
             disabled=["Firm Name"],
-            column_config={
-                "VM?": st.column_config.CheckboxColumn("VM?", width="small"),
-                "FCL Cases": st.column_config.TextColumn("FCL", width="small"),
-                "BK Cases": st.column_config.TextColumn("BK", width="small"),
-                "Design Partner": st.column_config.CheckboxColumn("DP", width="small"),
-                "M1": st.column_config.CheckboxColumn("M1", width="small"),
-                "M2": st.column_config.SelectboxColumn("M2", options=["Yes", "No", "Fell off"], width="small"),
-                "M2 Vol": st.column_config.TextColumn("M2 Vol", width="small"),
-                "Wave": st.column_config.SelectboxColumn("Wave", options=WAVE_OPTIONS, width="medium"),
-                "Training": st.column_config.CheckboxColumn("Training", width="small"),
-                "Phase 0": st.column_config.CheckboxColumn("P0", width="small"),
-                "Leadership Mtg": st.column_config.CheckboxColumn("Lead", width="small"),
-                "Design Mtg": st.column_config.CheckboxColumn("Design", width="small"),
-                "Interaction": st.column_config.SelectboxColumn("Interaction", options=INTERACTION_OPTIONS, width="medium"),
-                "NRZ Rank": st.column_config.TextColumn("NRZ", width="small"),
-                "LC Rank": st.column_config.TextColumn("LC", width="small"),
-                "Wave Notes": st.column_config.TextColumn("Wave Notes", width="medium"),
-                "Notes": st.column_config.TextColumn("Notes", width="large"),
-            },
+            column_config=visible_config,
             key="tracker_editor",
         )
 
         if st.button("Save Changes", type="primary"):
             for i, row in edited_df.iterrows():
-                t_id = df.iloc[i]["_id"]
                 firm_id = df.iloc[i]["_firm_id"]
-                upsert_tracker(
-                    session, firm_id,
-                    vm_firm=row["VM?"],
-                    vm_active_fcl=row["FCL Cases"],
-                    vm_active_bk=row["BK Cases"],
-                    nrz_rank=row["NRZ Rank"],
-                    loancare_rank=row["LC Rank"],
-                    ocean_design_partner=row["Design Partner"],
-                    ocean_m1=row["M1"],
-                    ocean_m2=row["M2"],
-                    ocean_m2_volume=row["M2 Vol"],
-                    proposed_wave=row["Wave"],
-                    live_training=row["Training"],
-                    wave_notes=row["Wave Notes"],
-                    last_reachout=row["Last Reach-out"],
-                    phase0_meeting=row["Phase 0"],
-                    leadership_meeting=row["Leadership Mtg"],
-                    design_meeting=row["Design Mtg"],
-                    leadership_engagement=row["Leadership Engaged"],
-                    interaction=row["Interaction"],
-                    ops_contact_email=row["Ops Email"],
-                    leadership_contact=row["Leadership"],
-                    leadership_title=row["Title"],
-                    leadership_email=row["Leadership Email"],
-                    nda_executed_by=row["NDA By"],
-                    notes=row["Notes"],
-                )
+                # Build kwargs from whatever columns are visible
+                kwargs = {}
+                col_to_field = {
+                    "VM?": "vm_firm",
+                    "FCL Cases": "vm_active_fcl",
+                    "BK Cases": "vm_active_bk",
+                    "NRZ Rank": "nrz_rank",
+                    "LC Rank": "loancare_rank",
+                    "Design Partner": "ocean_design_partner",
+                    "M1": "ocean_m1",
+                    "M2": "ocean_m2",
+                    "M2 Vol": "ocean_m2_volume",
+                    "Wave": "proposed_wave",
+                    "Training": "live_training",
+                    "Wave Notes": "wave_notes",
+                    "Last Reach-out": "last_reachout",
+                    "Phase 0": "phase0_meeting",
+                    "Leadership Mtg": "leadership_meeting",
+                    "Design Mtg": "design_meeting",
+                    "Leadership Engaged": "leadership_engagement",
+                    "Interaction": "interaction",
+                    "Ops Email": "ops_contact_email",
+                    "Leadership": "leadership_contact",
+                    "Title": "leadership_title",
+                    "Leadership Email": "leadership_email",
+                    "NDA By": "nda_executed_by",
+                    "Notes": "notes",
+                }
+                for col_name, field_name in col_to_field.items():
+                    if col_name in row.index:
+                        kwargs[field_name] = row[col_name]
+                upsert_tracker(session, firm_id, **kwargs)
             st.success(f"Saved {len(edited_df)} rows.")
             st.rerun()
 
         # Export
-        export_df = edited_df.copy()
-        csv = export_df.to_csv(index=False)
+        csv = edited_df.to_csv(index=False)
         st.download_button("Export CSV", csv, "firm_tracker.csv", "text/csv")
-
-
-# ===================================================================
-# PAGE 3: INGEST LIST
-# ===================================================================
-elif page == "Ingest List":
-    st.title("Ingest Servicer List")
-    st.caption("Upload a new firm list → auto-dedupe against the index → review → add to tracker.")
-
-    # Step 1: Upload
-    col1, col2 = st.columns(2)
-    with col1:
-        servicer = st.selectbox("Servicer", SERVICERS)
-    with col2:
-        list_label = st.text_input("Label (optional)", placeholder="e.g., Q1 2026 refresh")
-
-    uploaded = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
-
-    if uploaded:
-        if uploaded.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded)
-        else:
-            df = pd.read_csv(uploaded)
-
-        st.dataframe(df.head(10), use_container_width=True, hide_index=True)
-        name_col = st.selectbox("Column containing firm names", df.columns.tolist())
-
-        if st.button("Run Dedupe & Match", type="primary"):
-            raw_names = df[name_col].dropna().tolist()
-            with st.spinner(f"Matching {len(raw_names)} firms against the index..."):
-                sl = create_servicer_list(session, servicer, list_label or "", uploaded.name)
-                results = ingest_firm_list(session, sl.id, raw_names)
-            st.session_state["ingest_list_id"] = sl.id
-            st.session_state["ingest_results"] = results
-
-    # Step 2: Review
-    list_id = st.session_state.get("ingest_list_id")
-    results = st.session_state.get("ingest_results")
-
-    if list_id and results:
-        st.divider()
-        st.subheader("Review matches")
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Auto-matched", len(results["auto_matched"]))
-        c2.metric("Needs Review", len(results["review"]))
-        c3.metric("New Firms", len(results["new"]))
-
-        entries = session.query(ServicerListEntry).filter(
-            ServicerListEntry.servicer_list_id == list_id
-        ).all()
-
-        if results["auto_matched"]:
-            with st.expander(f"Auto-matched ({len(results['auto_matched'])})", expanded=False):
-                for item in results["auto_matched"]:
-                    st.markdown(f"**{item['raw_name']}** → {item['matched_to']}  `{item['score']:.0f}%`  _{item['via']}_")
-
-        if results["review"]:
-            with st.expander(f"Needs Review ({len(results['review'])})", expanded=True):
-                for item in results["review"]:
-                    entry = next((e for e in entries if e.raw_name == item["raw_name"] and e.match_status == "review"), None)
-                    if not entry:
-                        continue
-                    st.markdown(f"**{item['raw_name']}** → suggested: **{item['matched_to']}** `{item['score']:.0f}%`")
-                    rc1, rc2, rc3 = st.columns([1, 1, 3])
-                    with rc1:
-                        if st.button("Confirm", key=f"conf_{entry.id}"):
-                            confirm_match(session, entry.id)
-                            st.rerun()
-                    with rc2:
-                        if st.button("Reject", key=f"rej_{entry.id}"):
-                            reject_match(session, entry.id)
-                            st.rerun()
-                    with rc3:
-                        all_firms = get_all_firms(session)
-                        firm_opts = {f.name: f.id for f in all_firms}
-                        reassign = st.selectbox("Reassign to", options=[""] + list(firm_opts.keys()), key=f"reassign_{entry.id}", label_visibility="collapsed")
-                        if reassign and st.button("Reassign", key=f"do_reassign_{entry.id}"):
-                            confirm_match(session, entry.id, firm_opts[reassign])
-                            st.rerun()
-                    st.divider()
-
-        if results["new"]:
-            with st.expander(f"New Firms ({len(results['new'])})", expanded=True):
-                for item in results["new"]:
-                    entry = next((e for e in entries if e.raw_name == item["raw_name"] and e.match_status == "new"), None)
-                    if not entry:
-                        continue
-                    nc1, nc2 = st.columns([3, 1])
-                    with nc1:
-                        st.markdown(f"**{item['raw_name']}**")
-                        if item.get("best_candidate"):
-                            st.caption(f"Closest: {item['best_candidate']} ({item['score']:.0f}%)")
-                    with nc2:
-                        if st.button("Add to Index", key=f"addidx_{entry.id}"):
-                            new_firm = create_firm(session, item["raw_name"])
-                            confirm_match(session, entry.id, new_firm.id)
-                            # Also create a tracker entry
-                            upsert_tracker(session, new_firm.id, interaction="Planned engagement")
-                            st.success(f"Indexed & tracked: {new_firm.name}")
-                            st.rerun()
-
-    # Past ingestions
-    st.divider()
-    st.subheader("Past Ingestions")
-    lists = get_all_servicer_lists(session)
-    if lists:
-        for sl in lists:
-            sl_entries = session.query(ServicerListEntry).filter(
-                ServicerListEntry.servicer_list_id == sl.id
-            ).all()
-            statuses = {}
-            for e in sl_entries:
-                statuses[e.match_status] = statuses.get(e.match_status, 0) + 1
-            with st.expander(
-                f"{sl.servicer_name} — {sl.milestone or sl.filename} "
-                f"({len(sl_entries)} firms) — {sl.uploaded_at.strftime('%Y-%m-%d %H:%M')}"
-            ):
-                st.caption(f"Status: {statuses}")
-                if sl_entries:
-                    past_data = []
-                    for e in sl_entries:
-                        firm = get_firm_by_id(session, e.matched_firm_id) if e.matched_firm_id else None
-                        past_data.append({
-                            "Raw Name": e.raw_name,
-                            "Indexed Firm": firm.name if firm else "—",
-                            "Score": f"{e.match_score:.0f}%" if e.match_score else "",
-                            "Status": e.match_status,
-                        })
-                    st.dataframe(pd.DataFrame(past_data), use_container_width=True, hide_index=True)
-    else:
-        st.info("No lists ingested yet.")
