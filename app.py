@@ -252,47 +252,96 @@ if page == "Search & Index":
 
         if ingest_results["review"]:
             with st.expander(f"Needs Review ({len(ingest_results['review'])})", expanded=True):
+                # Collect review entries that still need action
+                review_entries = []
                 for item in ingest_results["review"]:
                     entry = next((e for e in entries if e.raw_name == item["raw_name"] and e.match_status == "review"), None)
-                    if not entry:
-                        continue
-                    st.markdown(f"**{item['raw_name']}** → suggested: **{item['matched_to']}** `{item['score']:.0f}%`")
-                    rc1, rc2, rc3 = st.columns([1, 1, 3])
-                    with rc1:
-                        if st.button("Confirm", key=f"conf_{entry.id}"):
-                            confirm_match(session, entry.id)
+                    if entry:
+                        review_entries.append((item, entry))
+
+                if review_entries:
+                    # Bulk actions
+                    select_all = st.checkbox("Select all", key="select_all_review")
+                    selected_ids = []
+
+                    for item, entry in review_entries:
+                        rc_sel, rc_info = st.columns([0.3, 5])
+                        with rc_sel:
+                            checked = st.checkbox("", value=select_all, key=f"sel_{entry.id}", label_visibility="collapsed")
+                            if checked:
+                                selected_ids.append(entry.id)
+                        with rc_info:
+                            st.markdown(f"**{item['raw_name']}** → suggested: **{item['matched_to']}** `{item['score']:.0f}%`")
+                        rc1, rc2, rc3 = st.columns([1, 1, 3])
+                        with rc1:
+                            if st.button("Confirm", key=f"conf_{entry.id}"):
+                                confirm_match(session, entry.id)
+                                st.rerun()
+                        with rc2:
+                            if st.button("Reject", key=f"rej_{entry.id}"):
+                                reject_match(session, entry.id)
+                                st.rerun()
+                        with rc3:
+                            all_firms = get_all_firms(session)
+                            firm_opts = {f.name: f.id for f in all_firms}
+                            reassign = st.selectbox("Reassign to", options=[""] + list(firm_opts.keys()), key=f"reassign_{entry.id}", label_visibility="collapsed")
+                            if reassign and st.button("Reassign", key=f"do_reassign_{entry.id}"):
+                                confirm_match(session, entry.id, firm_opts[reassign])
+                                st.rerun()
+                        st.divider()
+
+                    # Bulk confirm / reject buttons
+                    bc1, bc2, _ = st.columns([1, 1, 3])
+                    with bc1:
+                        if st.button("Confirm selected", type="primary", disabled=len(selected_ids) == 0):
+                            for eid in selected_ids:
+                                confirm_match(session, eid)
                             st.rerun()
-                    with rc2:
-                        if st.button("Reject", key=f"rej_{entry.id}"):
-                            reject_match(session, entry.id)
+                    with bc2:
+                        if st.button("Reject selected", disabled=len(selected_ids) == 0):
+                            for eid in selected_ids:
+                                reject_match(session, eid)
                             st.rerun()
-                    with rc3:
-                        all_firms = get_all_firms(session)
-                        firm_opts = {f.name: f.id for f in all_firms}
-                        reassign = st.selectbox("Reassign to", options=[""] + list(firm_opts.keys()), key=f"reassign_{entry.id}", label_visibility="collapsed")
-                        if reassign and st.button("Reassign", key=f"do_reassign_{entry.id}"):
-                            confirm_match(session, entry.id, firm_opts[reassign])
-                            st.rerun()
-                    st.divider()
 
         if ingest_results["new"]:
             with st.expander(f"New Firms ({len(ingest_results['new'])})", expanded=True):
+                all_firms_for_new = get_all_firms(session)
+                firm_opts_new = {f.name: f.id for f in all_firms_for_new}
+
                 for item in ingest_results["new"]:
                     entry = next((e for e in entries if e.raw_name == item["raw_name"] and e.match_status == "new"), None)
                     if not entry:
                         continue
-                    nc1, nc2 = st.columns([3, 1])
+                    st.markdown(f"**{item['raw_name']}**")
+                    if item.get("best_candidate"):
+                        st.caption(f"Closest match: {item['best_candidate']} ({item['score']:.0f}%)")
+
+                    nc1, nc2, nc3 = st.columns([2, 2, 1])
                     with nc1:
-                        st.markdown(f"**{item['raw_name']}**")
-                        if item.get("best_candidate"):
-                            st.caption(f"Closest: {item['best_candidate']} ({item['score']:.0f}%)")
+                        # Link to closest match
+                        if item.get("best_candidate") and item["best_candidate"] in firm_opts_new:
+                            if st.button(f"Link to \"{item['best_candidate']}\"", key=f"link_{entry.id}"):
+                                confirm_match(session, entry.id, firm_opts_new[item["best_candidate"]])
+                                st.rerun()
+                        else:
+                            # Manual pick from index
+                            link_to = st.selectbox(
+                                "Link to existing firm",
+                                options=[""] + list(firm_opts_new.keys()),
+                                key=f"linkpick_{entry.id}",
+                                label_visibility="collapsed",
+                            )
+                            if link_to and st.button("Link", key=f"dolink_{entry.id}"):
+                                confirm_match(session, entry.id, firm_opts_new[link_to])
+                                st.rerun()
                     with nc2:
-                        if st.button("Add to Index", key=f"addidx_{entry.id}"):
+                        if st.button("Add as new firm", key=f"addidx_{entry.id}"):
                             new_firm = create_firm(session, item["raw_name"])
                             confirm_match(session, entry.id, new_firm.id)
                             upsert_tracker(session, new_firm.id, interaction="Planned engagement")
                             st.success(f"Indexed & tracked: {new_firm.name}")
                             st.rerun()
+                    st.divider()
 
         # --- Export mapping ---
         st.divider()
