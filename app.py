@@ -896,157 +896,153 @@ elif page == "Client Overlap":
 
     st.divider()
 
-    # --- Build the overlap matrix from all uploaded servicer lists ---
+    # --- Build the overlap matrix grouped by CLIENT (servicer name) ---
     all_lists = session.query(ServicerList).order_by(ServicerList.uploaded_at.desc()).all()
 
     if not all_lists:
         st.info("No client lists uploaded yet. Upload one above to get started.")
     else:
-        # Let user filter which lists to include
-        list_options = {f"{sl.servicer_name} — {sl.milestone or sl.filename} ({sl.uploaded_at.strftime('%Y-%m-%d')})": sl.id for sl in all_lists}
-        selected_labels = st.multiselect(
-            "Select client lists to compare",
-            options=list(list_options.keys()),
-            default=list(list_options.keys())[:10],
-        )
-        selected_ids = [list_options[l] for l in selected_labels]
+        # Group lists by servicer name
+        servicer_to_list_ids = {}
+        for sl in all_lists:
+            servicer_to_list_ids.setdefault(sl.servicer_name, []).append(sl.id)
 
-        if selected_ids:
-            # Fetch all confirmed/auto_matched entries for selected lists
-            matched_entries = session.query(ServicerListEntry).filter(
-                ServicerListEntry.servicer_list_id.in_(selected_ids),
-                ServicerListEntry.match_status.in_(["auto_matched", "confirmed"]),
-                ServicerListEntry.matched_firm_id.isnot(None),
-            ).all()
+        all_client_names = sorted(servicer_to_list_ids.keys())
 
-            if not matched_entries:
-                st.warning("No matched firms found in the selected lists. Confirm matches on the Search & Index page first.")
-            else:
-                # Build a map: firm_id -> set of servicer list labels
-                firm_to_clients = {}
-                list_id_to_label = {v: k for k, v in list_options.items()}
-                # Shorter labels for the matrix columns
-                list_id_to_short = {}
-                for sl in all_lists:
-                    if sl.id in selected_ids:
-                        list_id_to_short[sl.id] = f"{sl.servicer_name}" + (f" ({sl.milestone})" if sl.milestone else "")
+        # Fetch all matched entries across all lists
+        all_list_ids = [sl.id for sl in all_lists]
+        matched_entries = session.query(ServicerListEntry).filter(
+            ServicerListEntry.servicer_list_id.in_(all_list_ids),
+            ServicerListEntry.match_status.in_(["auto_matched", "confirmed"]),
+            ServicerListEntry.matched_firm_id.isnot(None),
+        ).all()
 
-                for entry in matched_entries:
-                    fid = entry.matched_firm_id
-                    if fid not in firm_to_clients:
-                        firm_to_clients[fid] = set()
-                    firm_to_clients[fid].add(entry.servicer_list_id)
+        if not matched_entries:
+            st.warning("No matched firms found. Upload lists and confirm matches on the Search & Index page first.")
+        else:
+            # Map list_id -> servicer name for quick lookup
+            list_id_to_servicer = {sl.id: sl.servicer_name for sl in all_lists}
 
-                # Build matrix dataframe
-                firm_ids = sorted(firm_to_clients.keys())
-                firms_by_id = {f.id: f for f in session.query(IndexedFirm).filter(IndexedFirm.id.in_(firm_ids)).all()}
-                tracker_by_firm = {}
-                trackers = session.query(FirmTracker).filter(FirmTracker.indexed_firm_id.in_(firm_ids)).all()
-                for t in trackers:
-                    tracker_by_firm[t.indexed_firm_id] = t
+            # Build firm_id -> set of servicer names
+            firm_to_servicers = {}
+            for entry in matched_entries:
+                fid = entry.matched_firm_id
+                servicer = list_id_to_servicer.get(entry.servicer_list_id)
+                if servicer:
+                    firm_to_servicers.setdefault(fid, set()).add(servicer)
 
-                rows = []
-                for fid in firm_ids:
-                    firm = firms_by_id.get(fid)
-                    if not firm:
-                        continue
-                    tracker = tracker_by_firm.get(fid)
-                    row = {
-                        "Firm": firm.name,
-                        "# Clients": len(firm_to_clients[fid]),
-                        "Onboarded": "✅" if (tracker and tracker.live_training) else "",
-                        "Wave": tracker.proposed_wave if tracker else "",
-                    }
-                    for sid in selected_ids:
-                        label = list_id_to_short.get(sid, str(sid))
-                        row[label] = "✓" if sid in firm_to_clients[fid] else ""
-                    rows.append(row)
+            # Build matrix dataframe with one column per client
+            firm_ids = sorted(firm_to_servicers.keys())
+            firms_by_id = {f.id: f for f in session.query(IndexedFirm).filter(IndexedFirm.id.in_(firm_ids)).all()}
+            tracker_by_firm = {}
+            trackers = session.query(FirmTracker).filter(FirmTracker.indexed_firm_id.in_(firm_ids)).all()
+            for t in trackers:
+                tracker_by_firm[t.indexed_firm_id] = t
 
-                matrix_df = pd.DataFrame(rows)
-                # Sort by number of clients (most shared first)
-                matrix_df = matrix_df.sort_values("# Clients", ascending=False).reset_index(drop=True)
+            rows = []
+            for fid in firm_ids:
+                firm = firms_by_id.get(fid)
+                if not firm:
+                    continue
+                tracker = tracker_by_firm.get(fid)
+                servicers = firm_to_servicers[fid]
+                row = {
+                    "Firm": firm.name,
+                    "# Clients": len(servicers),
+                    "Clients": ", ".join(sorted(servicers)),
+                    "Onboarded": "Yes" if (tracker and tracker.live_training) else "",
+                    "Wave": tracker.proposed_wave if tracker else "",
+                }
+                for client in all_client_names:
+                    row[client] = "✓" if client in servicers else ""
+                rows.append(row)
 
-                # --- Summary metrics ---
-                sc1, sc2, sc3, sc4 = st.columns(4)
-                sc1.metric("Total Firms", len(matrix_df))
-                shared = len(matrix_df[matrix_df["# Clients"] > 1])
-                sc2.metric("Shared (2+ clients)", shared)
-                onboarded = len(matrix_df[matrix_df["Onboarded"] == "✅"])
-                sc3.metric("Already Onboarded", onboarded)
-                not_onboarded = len(matrix_df) - onboarded
-                sc4.metric("Not Yet Onboarded", not_onboarded)
+            matrix_df = pd.DataFrame(rows)
+            matrix_df = matrix_df.sort_values("# Clients", ascending=False).reset_index(drop=True)
 
-                st.divider()
+            # --- Summary metrics ---
+            sc1, sc2, sc3, sc4 = st.columns(4)
+            sc1.metric("Total Firms", len(matrix_df))
+            shared = len(matrix_df[matrix_df["# Clients"] > 1])
+            sc2.metric("Shared (2+ clients)", shared)
+            onboarded = len(matrix_df[matrix_df["Onboarded"] == "Yes"])
+            sc3.metric("Already Onboarded", onboarded)
+            sc4.metric("Not Yet Onboarded", len(matrix_df) - onboarded)
 
-                # --- Filter controls ---
-                # Client column labels for filtering
-                client_cols = [list_id_to_short[sid] for sid in selected_ids]
+            st.divider()
 
-                fc1, fc2, fc3 = st.columns([2, 2, 2])
-                with fc1:
-                    show_filter = st.radio(
-                        "Show",
-                        ["All firms", "Shared only (2+ clients)", "Not yet onboarded"],
-                        horizontal=True,
-                        key="ov_filter",
-                    )
-                with fc2:
-                    overlap_clients = st.multiselect(
-                        "Filter: firms used by these clients",
-                        options=client_cols,
-                        key="ov_client_filter",
-                        placeholder="Select clients to filter overlap...",
-                    )
-                with fc3:
-                    search_firm = st.text_input("Search firm", key="ov_search", placeholder="Filter by name...")
-
-                display_df = matrix_df.copy()
-                if show_filter == "Shared only (2+ clients)":
-                    display_df = display_df[display_df["# Clients"] > 1]
-                elif show_filter == "Not yet onboarded":
-                    display_df = display_df[display_df["Onboarded"] != "✅"]
-
-                # Filter to firms that appear in ALL selected clients
-                if overlap_clients:
-                    for client_col in overlap_clients:
-                        display_df = display_df[display_df[client_col] == "✓"]
-
-                if search_firm:
-                    display_df = display_df[display_df["Firm"].str.contains(search_firm, case=False, na=False)]
-
-                st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
-
-                # --- Firm detail lookup ---
-                st.divider()
-                st.subheader("Firm Detail")
-                all_firm_names = sorted(matrix_df["Firm"].tolist())
-                selected_firm = st.selectbox(
-                    "Select a firm to see which clients use it",
-                    options=[""] + all_firm_names,
-                    key="ov_firm_detail",
+            # --- Filter controls ---
+            fc1, fc2, fc3 = st.columns([2, 2, 2])
+            with fc1:
+                show_filter = st.radio(
+                    "Show",
+                    ["All firms", "Shared only (2+ clients)", "Not yet onboarded"],
+                    horizontal=True,
+                    key="ov_filter",
                 )
-                if selected_firm:
-                    firm_row = matrix_df[matrix_df["Firm"] == selected_firm].iloc[0]
-                    present_in = [col for col in client_cols if firm_row.get(col) == "✓"]
-                    not_in = [col for col in client_cols if firm_row.get(col) != "✓"]
+            with fc2:
+                overlap_clients = st.multiselect(
+                    "Show firms used by these clients",
+                    options=all_client_names,
+                    key="ov_client_filter",
+                    placeholder="e.g., Valon Mortgage, ServiceMac",
+                )
+            with fc3:
+                search_firm = st.text_input("Search firm", key="ov_search", placeholder="Filter by name...")
 
-                    dc1, dc2 = st.columns(2)
-                    with dc1:
-                        st.markdown(f"**Present in ({len(present_in)} client{'s' if len(present_in) != 1 else ''}):**")
-                        for c in present_in:
-                            st.markdown(f"- ✓ {c}")
-                    with dc2:
-                        if not_in:
-                            st.markdown(f"**Not in ({len(not_in)}):**")
-                            for c in not_in:
-                                st.markdown(f"- ✗ {c}")
+            display_df = matrix_df.copy()
+            if show_filter == "Shared only (2+ clients)":
+                display_df = display_df[display_df["# Clients"] > 1]
+            elif show_filter == "Not yet onboarded":
+                display_df = display_df[display_df["Onboarded"] != "Yes"]
 
-                    onb = firm_row.get("Onboarded", "")
-                    wave = firm_row.get("Wave", "")
-                    if onb or wave:
-                        st.caption(f"Onboarded: {onb or 'No'}  |  Wave: {wave or '—'}")
+            # Filter to firms present in ALL selected clients
+            if overlap_clients:
+                for client in overlap_clients:
+                    display_df = display_df[display_df[client] == "✓"]
 
-                # --- Export ---
-                st.divider()
-                csv_overlap = display_df.to_csv(index=False)
-                st.download_button("Export overlap matrix (CSV)", csv_overlap, "client_overlap_matrix.csv", "text/csv")
+            if search_firm:
+                display_df = display_df[display_df["Firm"].str.contains(search_firm, case=False, na=False)]
+
+            # Show overlap summary when filtering by multiple clients
+            if len(overlap_clients) >= 2:
+                st.info(
+                    f"Showing **{len(display_df)}** firms shared across "
+                    f"**{', '.join(overlap_clients)}**"
+                )
+
+            st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
+
+            # --- Firm detail lookup ---
+            st.divider()
+            st.subheader("Firm Detail")
+            all_firm_names_list = sorted(matrix_df["Firm"].tolist())
+            selected_firm = st.selectbox(
+                "Select a firm to see which clients use it",
+                options=[""] + all_firm_names_list,
+                key="ov_firm_detail",
+            )
+            if selected_firm:
+                firm_row = matrix_df[matrix_df["Firm"] == selected_firm].iloc[0]
+                present_in = [c for c in all_client_names if firm_row.get(c) == "✓"]
+                not_in = [c for c in all_client_names if firm_row.get(c) != "✓"]
+
+                dc1, dc2 = st.columns(2)
+                with dc1:
+                    st.markdown(f"**Used by ({len(present_in)} client{'s' if len(present_in) != 1 else ''}):**")
+                    for c in present_in:
+                        st.markdown(f"- ✓ {c}")
+                with dc2:
+                    if not_in:
+                        st.markdown(f"**Not used by ({len(not_in)}):**")
+                        for c in not_in:
+                            st.markdown(f"- ✗ {c}")
+
+                onb = firm_row.get("Onboarded", "")
+                wave = firm_row.get("Wave", "")
+                st.caption(f"Onboarded: {onb or 'No'}  |  Wave: {wave or '—'}")
+
+            # --- Export ---
+            st.divider()
+            csv_overlap = display_df.to_csv(index=False)
+            st.download_button("Export overlap matrix (CSV)", csv_overlap, "client_overlap_matrix.csv", "text/csv")
