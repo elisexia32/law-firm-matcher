@@ -979,7 +979,10 @@ elif page == "Client Overlap":
                 st.divider()
 
                 # --- Filter controls ---
-                fc1, fc2 = st.columns(2)
+                # Client column labels for filtering
+                client_cols = [list_id_to_short[sid] for sid in selected_ids]
+
+                fc1, fc2, fc3 = st.columns([2, 2, 2])
                 with fc1:
                     show_filter = st.radio(
                         "Show",
@@ -988,6 +991,13 @@ elif page == "Client Overlap":
                         key="ov_filter",
                     )
                 with fc2:
+                    overlap_clients = st.multiselect(
+                        "Filter: firms used by these clients",
+                        options=client_cols,
+                        key="ov_client_filter",
+                        placeholder="Select clients to filter overlap...",
+                    )
+                with fc3:
                     search_firm = st.text_input("Search firm", key="ov_search", placeholder="Filter by name...")
 
                 display_df = matrix_df.copy()
@@ -996,11 +1006,47 @@ elif page == "Client Overlap":
                 elif show_filter == "Not yet onboarded":
                     display_df = display_df[display_df["Onboarded"] != "✅"]
 
+                # Filter to firms that appear in ALL selected clients
+                if overlap_clients:
+                    for client_col in overlap_clients:
+                        display_df = display_df[display_df[client_col] == "✓"]
+
                 if search_firm:
                     display_df = display_df[display_df["Firm"].str.contains(search_firm, case=False, na=False)]
 
                 st.dataframe(display_df, use_container_width=True, hide_index=True, height=600)
 
+                # --- Firm detail lookup ---
+                st.divider()
+                st.subheader("Firm Detail")
+                all_firm_names = sorted(matrix_df["Firm"].tolist())
+                selected_firm = st.selectbox(
+                    "Select a firm to see which clients use it",
+                    options=[""] + all_firm_names,
+                    key="ov_firm_detail",
+                )
+                if selected_firm:
+                    firm_row = matrix_df[matrix_df["Firm"] == selected_firm].iloc[0]
+                    present_in = [col for col in client_cols if firm_row.get(col) == "✓"]
+                    not_in = [col for col in client_cols if firm_row.get(col) != "✓"]
+
+                    dc1, dc2 = st.columns(2)
+                    with dc1:
+                        st.markdown(f"**Present in ({len(present_in)} client{'s' if len(present_in) != 1 else ''}):**")
+                        for c in present_in:
+                            st.markdown(f"- ✓ {c}")
+                    with dc2:
+                        if not_in:
+                            st.markdown(f"**Not in ({len(not_in)}):**")
+                            for c in not_in:
+                                st.markdown(f"- ✗ {c}")
+
+                    onb = firm_row.get("Onboarded", "")
+                    wave = firm_row.get("Wave", "")
+                    if onb or wave:
+                        st.caption(f"Onboarded: {onb or 'No'}  |  Wave: {wave or '—'}")
+
                 # --- Export ---
+                st.divider()
                 csv_overlap = display_df.to_csv(index=False)
                 st.download_button("Export overlap matrix (CSV)", csv_overlap, "client_overlap_matrix.csv", "text/csv")
