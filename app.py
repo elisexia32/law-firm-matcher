@@ -445,6 +445,38 @@ if page == "Search & Index":
                     st.rerun()
                 except Exception as e:
                     st.error(f"Sync failed: {e}")
+
+            st.divider()
+            st.caption(
+                "**Refresh Index** — use ValonOS prod as the source of truth. "
+                "Updates firm names to match prod, and adds any new firms not yet in the index."
+            )
+            if st.button("Refresh Index from ValonOS", key="valonos_refresh"):
+                from valonos_sync import refresh_index_from_valonos
+                try:
+                    with st.spinner("Syncing & refreshing index from ValonOS prod..."):
+                        result = refresh_index_from_valonos(session, tenant_key=1)
+                    msgs = []
+                    if result["updated"]:
+                        msgs.append(f"**Updated {len(result['updated'])} names:**")
+                        for u in result["updated"]:
+                            msgs.append(f"- {u['old']} → {u['new']}")
+                    if result["added"]:
+                        msgs.append(f"**Added {len(result['added'])} new firms:**")
+                        for a in result["added"]:
+                            msgs.append(f"- {a}")
+                    if result["already_current"] and not result["updated"] and not result["added"]:
+                        msgs.append(f"All {result['already_current']} firms already up to date.")
+                    st.success(
+                        f"Processed {result['total_entities']} active ValonOS entities. "
+                        f"{len(result['updated'])} updated, {len(result['added'])} added, "
+                        f"{result['already_current']} already current."
+                    )
+                    if msgs:
+                        st.markdown("\n".join(msgs))
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Refresh failed: {e}")
     with tool_col2:
         with st.expander("➕ Add New Firm"):
             nc1, nc2 = st.columns([3, 1])
