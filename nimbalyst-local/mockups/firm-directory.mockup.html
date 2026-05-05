@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    :root {
+      --primary: #5B7FA5;
+      --primary-light: #EDF2F7;
+      --primary-dark: #3D5A80;
+      --gray-50: #FAFBFC;
+      --gray-100: #F4F5F7;
+      --gray-200: #E8EAED;
+      --gray-300: #D1D5DB;
+      --gray-400: #9CA3AF;
+      --gray-500: #6B7280;
+      --gray-600: #4B5563;
+      --gray-700: #374151;
+      --gray-800: #1F2937;
+      --green: #6B9080;
+      --green-light: #EEF4F0;
+      --amber: #B5854B;
+      --amber-light: #FDF6EC;
+      --orange: #C07D4B;
+      --orange-light: #FBF3ED;
+      --red: #C0736E;
+      --red-light: #FDF0EF;
+      --purple: #8B7EB8;
+      --purple-light: #F3F1F9;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fff;
+      color: var(--gray-800);
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 240px; background: var(--gray-50); border-right: 1px solid var(--gray-200);
+      padding: 20px 0; flex-shrink: 0;
+    }
+    .sidebar-logo {
+      padding: 0 20px 24px; font-size: 18px; font-weight: 700;
+      color: var(--gray-800); display: flex; align-items: center; gap: 8px;
+    }
+    .sidebar-logo .icon {
+      width: 28px; height: 28px; background: var(--primary-dark); border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; color: white; font-size: 14px;
+    }
+    .sidebar-section { padding: 0 12px; margin-bottom: 8px; }
+    .sidebar-section-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--gray-400); padding: 0 8px; margin-bottom: 4px;
+    }
+    .sidebar-item {
+      display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+      border-radius: 6px; font-size: 14px; color: var(--gray-600); cursor: pointer;
+    }
+    .sidebar-item:hover { background: var(--gray-200); }
+    .sidebar-item.active { background: var(--primary-light); color: var(--primary-dark); font-weight: 600; }
+    .sidebar-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+    .sidebar-divider { height: 1px; background: var(--gray-200); margin: 16px 20px; }
+    .sidebar-stats { padding: 0 20px; }
+    .sidebar-stats-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-400); margin-bottom: 12px; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+    .stat-row .label { color: var(--gray-500); }
+    .stat-row .value { font-weight: 600; color: var(--gray-700); }
+
+    .main { flex: 1; padding: 24px 32px; overflow-y: auto; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .page-title { font-size: 24px; font-weight: 700; color: var(--gray-800); }
+    .header-actions { display: flex; gap: 8px; }
+
+    .btn {
+      padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+      cursor: pointer; border: 1px solid var(--gray-300); background: white;
+      color: var(--gray-600); display: flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { background: var(--gray-50); border-color: var(--gray-400); }
+    .btn-primary { background: var(--primary-dark); color: white; border-color: var(--primary-dark); }
+    .btn-primary:hover { background: #2C4A6E; }
+
+    .search-bar { position: relative; margin-bottom: 16px; }
+    .search-bar input {
+      width: 100%; padding: 10px 16px 10px 40px; border: 1px solid var(--gray-300);
+      border-radius: 8px; font-size: 14px; outline: none;
+    }
+    .search-bar input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(91, 127, 165, 0.1); }
+    .search-bar .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--gray-400); font-size: 14px; }
+
+    .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .filter-select {
+      padding: 6px 28px 6px 10px; border: 1px solid var(--gray-300); border-radius: 6px;
+      font-size: 13px; color: var(--gray-600); background: white; cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239CA3AF' d='M3 5l3 3 3-3z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+    }
+    .filter-select.active { border-color: var(--primary); background-color: var(--primary-light); color: var(--primary-dark); }
+    .filter-label { font-size: 12px; color: var(--gray-400); font-weight: 500; }
+    .filter-divider { width: 1px; height: 24px; background: var(--gray-300); margin: 0 4px; }
+    .active-filter-tag {
+      display: flex; align-items: center; gap: 4px; padding: 4px 8px 4px 10px;
+      background: var(--primary-light); border: 1px solid #C8D6E5; border-radius: 16px;
+      font-size: 12px; color: var(--primary-dark); font-weight: 500;
+    }
+    .active-filter-tag .remove { cursor: pointer; font-size: 14px; line-height: 1; opacity: 0.6; }
+    .active-filter-tag .remove:hover { opacity: 1; }
+
+    .table-container { border: 1px solid var(--gray-200); border-radius: 8px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: var(--gray-50); padding: 10px 14px; text-align: left; font-weight: 600;
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--gray-500);
+      border-bottom: 1px solid var(--gray-200); white-space: nowrap;
+    }
+    tbody td { padding: 10px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
+    tbody tr:hover { background: var(--gray-50); }
+    tbody tr.expanded-parent { background: var(--primary-light); }
+
+    .firm-name { font-weight: 600; color: var(--gray-800); }
+    .firm-name .expand-icon {
+      display: inline-block; margin-right: 6px; font-size: 10px;
+      color: var(--gray-400); cursor: pointer;
+    }
+    .firm-name .expand-icon.open { transform: rotate(90deg); color: var(--primary); }
+
+    .valonos-entity { color: var(--gray-600); font-size: 12px; }
+    .valonos-entity.unmapped { color: var(--gray-400); font-style: italic; }
+    .monikers { font-size: 12px; color: var(--gray-500); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .wave-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--purple-light); color: #6B5F96; }
+    .wave-badge.w2 { background: #E8EDF4; color: #4A5A80; }
+    .wave-badge.w3 { background: #E8F0EE; color: #4A7068; }
+
+    .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .status-matched { background: var(--green-light); color: var(--green); }
+    .status-pending { background: var(--amber-light); color: var(--amber); }
+    .status-new { background: var(--gray-100); color: var(--gray-500); }
+    .status-review { background: var(--orange-light); color: var(--orange); }
+
+    .servicer-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    .servicer-chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; }
+    .chip-valon { background: var(--primary-light); color: var(--primary-dark); }
+    .chip-ocean { background: #E8F1F2; color: #4A7C7E; }
+    .chip-servicemc { background: var(--purple-light); color: #6B5F96; }
+    .chip-loancare { background: var(--amber-light); color: var(--amber); }
+
+    .detail-row td { padding: 0; background: transparent; border-bottom: 1px solid var(--gray-200); }
+    .detail-panel {
+      background: linear-gradient(135deg, #F6F8FA 0%, #EEF1F4 100%);
+      border-top: 2px solid var(--primary); padding: 20px 24px;
+    }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .detail-section { background: white; border-radius: 8px; padding: 14px 16px; border: 1px solid var(--gray-200); }
+    .detail-section-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--gray-400); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .detail-section-title .section-icon { font-size: 13px; }
+    .detail-list { list-style: none; }
+    .detail-list li { font-size: 13px; padding: 3px 0; color: var(--gray-600); display: flex; align-items: center; gap: 6px; }
+    .detail-list li .source-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--gray-100); color: var(--gray-400); font-weight: 500; }
+
+    .valonos-mapping { font-size: 13px; color: var(--gray-600); }
+    .valonos-mapping .tenant { font-size: 11px; color: var(--gray-400); }
+    .valonos-mapping .entity-name { font-weight: 500; }
+    .valonos-mapping .sid { font-size: 11px; color: var(--gray-400); font-family: monospace; }
+
+    .ma-rule {
+      font-size: 12px; padding: 8px 10px; background: var(--amber-light);
+      border-radius: 6px; border-left: 3px solid var(--amber); color: var(--gray-600);
+    }
+    .ma-rule .acquired { font-weight: 600; }
+
+    .detail-actions { display: flex; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-200); }
+    .detail-actions .btn { font-size: 12px; padding: 6px 12px; }
+
+    .table-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; font-size: 13px; color: var(--gray-500); }
+    .table-footer .count { font-weight: 500; }
+    .pagination { display: flex; gap: 4px; }
+    .pagination button {
+      padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: 4px;
+      background: white; font-size: 12px; cursor: pointer; color: var(--gray-500);
+    }
+    .pagination button.active { background: var(--primary-dark); color: white; border-color: var(--primary-dark); }
+  </style>
+</head>
+<body>
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="icon">LF</div>
+      Law Firm Matcher
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Views</div>
+      <div class="sidebar-item active"><span class="nav-icon">&#9776;</span> Firm Directory</div>
+      <div class="sidebar-item"><span class="nav-icon">&#9664;</span> Onboarding Pipeline</div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Actions</div>
+      <div class="sidebar-item"><span class="nav-icon">&#8635;</span> Sync Google Sheet</div>
+      <div class="sidebar-item"><span class="nav-icon">&#9729;</span> Sync ValonOS Entities</div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-stats">
+      <div class="sidebar-stats-label">Overview</div>
+      <div class="stat-row"><span class="label">Indexed Firms</span><span class="value">128</span></div>
+      <div class="stat-row"><span class="label">ValonOS Mapped</span><span class="value">96</span></div>
+      <div class="stat-row"><span class="label">Pending Review</span><span class="value" style="color: var(--orange)">12</span></div>
+      <div class="stat-row"><span class="label">Unmapped</span><span class="value" style="color: var(--red)">20</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">Firm Directory</h1>
+      <div class="header-actions">
+        <button class="btn">&#8593; Upload List</button>
+        <button class="btn btn-primary">&#8615; Export Mapping</button>
+      </div>
+    </div>
+
+    <div class="search-bar">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" placeholder="Search firms by name, moniker, or ValonOS entity..." />
+    </div>
+
+    <div class="filters">
+      <span class="filter-label">Filter:</span>
+      <select class="filter-select active"><option>Wave 1</option></select>
+      <select class="filter-select"><option>All Servicers</option></select>
+      <select class="filter-select"><option>All Statuses</option></select>
+      <select class="filter-select"><option>All ValonOS</option></select>
+      <div class="filter-divider"></div>
+      <div class="active-filter-tag">Wave 1 <span class="remove">&times;</span></div>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Firm Name</th>
+            <th>ValonOS Entity</th>
+            <th>Monikers</th>
+            <th>Wave</th>
+            <th>Status</th>
+            <th>Servicers</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="firm-name"><span class="expand-icon">&#9654;</span></span></td>
+            <td><span class="firm-name">Albertelli Law</span></td>
+            <td><span class="valonos-entity">Albertelli Law, P.A.</span></td>
+            <td><span class="monikers">The Albertelli Law Firm, Albertelli Law PA</span></td>
+            <td><span class="wave-badge">Wave 1</span></td>
+            <td><span class="status-badge status-matched">Matched</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-ocean">Ocean</span><span class="servicer-chip chip-valon">Valon</span></div></td>
+          </tr>
+
+          <tr class="expanded-parent">
+            <td><span class="firm-name"><span class="expand-icon open">&#9654;</span></span></td>
+            <td><span class="firm-name">McCalla Raymer Leibert Pierce</span></td>
+            <td><span class="valonos-entity">McCalla Raymer Leibert Pierce, LLC</span></td>
+            <td><span class="monikers">MRLP, McCalla Raymer</span></td>
+            <td><span class="wave-badge">Wave 1</span></td>
+            <td><span class="status-badge status-matched">Matched</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-ocean">Ocean</span><span class="servicer-chip chip-servicemc">SvcMac</span><span class="servicer-chip chip-valon">Valon</span></div></td>
+          </tr>
+
+          <tr class="detail-row">
+            <td colspan="7">
+              <div class="detail-panel">
+                <div class="detail-grid">
+                  <!-- Monikers -->
+                  <div class="detail-section">
+                    <div class="detail-section-title"><span class="section-icon">&#128278;</span> Monikers</div>
+                    <ul class="detail-list">
+                      <li>McCalla Raymer Leibert Pierce <span class="source-tag">indexed</span></li>
+                      <li>MRLP <span class="source-tag">manual</span></li>
+                      <li>McCalla Raymer <span class="source-tag">upload</span></li>
+                      <li>McCalla Raymer Leibert Pierce LLC <span class="source-tag">upload</span></li>
+                    </ul>
+                    <div style="margin-top: 14px;">
+                      <div class="detail-section-title" style="margin-bottom: 6px;"><span class="section-icon">&#128257;</span> M&A Rules</div>
+                      <div class="ma-rule">
+                        <span class="acquired">Shapiro & Ingle</span> acquired &rarr; mapped here since <em>2019 TN context</em>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- ValonOS Mappings -->
+                  <div class="detail-section">
+                    <div class="detail-section-title"><span class="section-icon">&#9741;</span> ValonOS Entities</div>
+                    <div class="valonos-mapping" style="padding: 4px 0; border-bottom: 1px solid var(--gray-100);">
+                      <div class="tenant">Valon Production</div>
+                      <div><span class="entity-name">McCalla Raymer Leibert Pierce, LLC</span></div>
+                      <div class="sid">sid: slfi_2a8f...k4m9</div>
+                    </div>
+                    <div class="valonos-mapping" style="padding: 4px 0; border-bottom: 1px solid var(--gray-100);">
+                      <div class="tenant">VT Ocean SDT</div>
+                      <div><span class="entity-name">McCalla Raymer Leibert Pierce, LLC</span></div>
+                      <div class="sid">sid: slfi_7c3d...n2p1</div>
+                    </div>
+                    <div class="valonos-mapping" style="padding: 4px 0;">
+                      <div class="tenant">ServiceMac Production</div>
+                      <div><span class="entity-name">McCalla Raymer Leibert Pierce, LLC</span></div>
+                      <div class="sid">sid: slfi_9e4b...q8r5</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="detail-actions">
+                  <button class="btn">&#9998; Edit Firm</button>
+                  <button class="btn">+ Add Moniker</button>
+                  <button class="btn">&#9741; Map to ValonOS Entity</button>
+                  <button class="btn" style="margin-left: auto; color: var(--red); border-color: var(--red-light);">&#128465; Remove</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td><span class="firm-name"><span class="expand-icon">&#9654;</span></span></td>
+            <td><span class="firm-name">Shapiro & DeNardo</span></td>
+            <td><span class="valonos-entity">Shapiro & DeNardo, LLC</span></td>
+            <td><span class="monikers">S&D, Shapiro DeNardo LLC</span></td>
+            <td><span class="wave-badge">Wave 1</span></td>
+            <td><span class="status-badge status-matched">Matched</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-ocean">Ocean</span></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="firm-name"><span class="expand-icon">&#9654;</span></span></td>
+            <td><span class="firm-name">Brock & Scott</span></td>
+            <td><span class="valonos-entity">Brock & Scott, PLLC</span></td>
+            <td><span class="monikers">Brock and Scott PLLC</span></td>
+            <td><span class="wave-badge">Wave 1</span></td>
+            <td><span class="status-badge status-matched">Matched</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-ocean">Ocean</span><span class="servicer-chip chip-valon">Valon</span></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="firm-name"><span class="expand-icon">&#9654;</span></span></td>
+            <td><span class="firm-name">Hladik Onorato & Federman</span></td>
+            <td><span class="valonos-entity unmapped">-- unmapped --</span></td>
+            <td><span class="monikers">HOF, Hladik Onorato</span></td>
+            <td><span class="wave-badge w2">Wave 2</span></td>
+            <td><span class="status-badge status-review">Review</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-ocean">Ocean</span></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="firm-name"><span class="expand-icon">&#9654;</span></span></td>
+            <td><span class="firm-name">Padgett Law Group</span></td>
+            <td><span class="valonos-entity">Padgett Law Group</span></td>
+            <td><span class="monikers">PLG</span></td>
+            <td><span class="wave-badge">Wave 1</span></td>
+            <td><span class="status-badge status-matched">Matched</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-ocean">Ocean</span><span class="servicer-chip chip-loancare">LoanCare</span></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="firm-name"><span class="expand-icon">&#9654;</span></span></td>
+            <td><span class="firm-name">Logs Legal Group</span></td>
+            <td><span class="valonos-entity">Logs Legal Group, LLP</span></td>
+            <td><span class="monikers">Logs Legal, LOGS</span></td>
+            <td><span class="wave-badge w2">Wave 2</span></td>
+            <td><span class="status-badge status-pending">Pending</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-servicemc">SvcMac</span></div></td>
+          </tr>
+
+          <tr>
+            <td><span class="firm-name"><span class="expand-icon">&#9654;</span></span></td>
+            <td><span class="firm-name">Stern & Eisenberg</span></td>
+            <td><span class="valonos-entity unmapped">-- unmapped --</span></td>
+            <td><span class="monikers">Stern Eisenberg PC</span></td>
+            <td><span class="wave-badge w3">Wave 3</span></td>
+            <td><span class="status-badge status-new">New</span></td>
+            <td><div class="servicer-chips"><span class="servicer-chip chip-ocean">Ocean</span></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-footer">
+      <span class="count">Showing 65 of 128 firms (filtered)</span>
+      <div class="pagination">
+        <button class="active">1</button>
+        <button>2</button>
+        <button>3</button>
+        <button>&rarr;</button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    :root {
+      --primary: #5B7FA5;
+      --primary-light: #EDF2F7;
+      --primary-dark: #3D5A80;
+      --gray-50: #FAFBFC;
+      --gray-100: #F4F5F7;
+      --gray-200: #E8EAED;
+      --gray-300: #D1D5DB;
+      --gray-400: #9CA3AF;
+      --gray-500: #6B7280;
+      --gray-600: #4B5563;
+      --gray-700: #374151;
+      --gray-800: #1F2937;
+      --green: #6B9080;
+      --green-light: #EEF4F0;
+      --amber: #B5854B;
+      --amber-light: #FDF6EC;
+      --red: #C0736E;
+      --red-light: #FDF0EF;
+      --purple: #8B7EB8;
+      --purple-light: #F3F1F9;
+      --teal: #5F9EA0;
+      --teal-light: #EDF6F6;
+      --slate: #64748B;
+      --slate-light: #F1F5F9;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fff;
+      color: var(--gray-800);
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 240px;
+      background: var(--gray-50);
+      border-right: 1px solid var(--gray-200);
+      padding: 20px 0;
+      flex-shrink: 0;
+    }
+
+    .sidebar-logo {
+      padding: 0 20px 24px; font-size: 18px; font-weight: 700;
+      color: var(--gray-800); display: flex; align-items: center; gap: 8px;
+    }
+
+    .sidebar-logo .icon {
+      width: 28px; height: 28px; background: var(--primary-dark);
+      border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; color: white; font-size: 14px;
+    }
+
+    .sidebar-section { padding: 0 12px; margin-bottom: 8px; }
+    .sidebar-section-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--gray-400); padding: 0 8px; margin-bottom: 4px;
+    }
+    .sidebar-item {
+      display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+      border-radius: 6px; font-size: 14px; color: var(--gray-600); cursor: pointer;
+    }
+    .sidebar-item:hover { background: var(--gray-200); }
+    .sidebar-item.active { background: var(--primary-light); color: var(--primary-dark); font-weight: 600; }
+    .sidebar-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+    .sidebar-divider { height: 1px; background: var(--gray-200); margin: 16px 20px; }
+    .sidebar-stats { padding: 0 20px; }
+    .sidebar-stats-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-400); margin-bottom: 12px; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+    .stat-row .label { color: var(--gray-500); }
+    .stat-row .value { font-weight: 600; color: var(--gray-700); }
+
+    /* Main */
+    .main { flex: 1; padding: 24px 32px; overflow-y: auto; }
+
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .page-title { font-size: 24px; font-weight: 700; color: var(--gray-800); }
+
+    .btn {
+      padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+      cursor: pointer; border: 1px solid var(--gray-300); background: white; color: var(--gray-600);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn:hover { background: var(--gray-50); }
+
+    .filters { display: flex; gap: 8px; margin-bottom: 24px; align-items: center; }
+    .filter-label { font-size: 12px; color: var(--gray-400); font-weight: 500; }
+    .filter-select {
+      padding: 6px 28px 6px 10px; border: 1px solid var(--gray-300); border-radius: 6px;
+      font-size: 13px; color: var(--gray-600); background: white; cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239CA3AF' d='M3 5l3 3 3-3z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+    }
+    .filter-select.active { border-color: var(--primary); background-color: var(--primary-light); color: var(--primary-dark); }
+
+    /* Forecast Banner */
+    .forecast-banner {
+      background: linear-gradient(135deg, var(--primary-dark) 0%, #2C4A6E 100%);
+      border-radius: 12px;
+      padding: 22px 28px;
+      margin-bottom: 28px;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .forecast-main { flex: 1; }
+    .forecast-label {
+      font-size: 11px; font-weight: 500; opacity: 0.65;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
+    }
+    .forecast-question { font-size: 17px; font-weight: 600; margin-bottom: 2px; }
+    .forecast-date-select {
+      padding: 6px 12px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1);
+      color: white; font-size: 13px; font-weight: 500; cursor: pointer;
+      appearance: none; margin-top: 8px; padding-right: 28px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M3 5l3 3 3-3z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+    }
+
+    .forecast-numbers { display: flex; gap: 28px; }
+
+    .forecast-stat { text-align: center; }
+    .forecast-stat .fs-value {
+      font-size: 34px; font-weight: 700; line-height: 1;
+    }
+    .forecast-stat .fs-total { font-size: 18px; font-weight: 400; opacity: 0.55; }
+    .forecast-stat .fs-label {
+      font-size: 11px; font-weight: 500; opacity: 0.6; margin-top: 3px;
+    }
+
+    .forecast-divider { width: 1px; height: 48px; background: rgba(255,255,255,0.2); }
+
+    /* Wave Sections */
+    .wave-section {
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .wave-header {
+      display: flex;
+      align-items: stretch;
+      padding: 0;
+      background: var(--gray-50);
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    .wave-title-area {
+      padding: 18px 24px;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-right: 1px solid var(--gray-200);
+    }
+
+    .wave-title { font-size: 18px; font-weight: 700; color: var(--gray-800); }
+    .wave-date { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+
+    .wave-countdown {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px;
+      margin-top: 6px; width: fit-content;
+    }
+    .countdown-urgent { background: var(--red-light); color: var(--red); }
+    .countdown-ok { background: var(--amber-light); color: var(--amber); }
+    .countdown-good { background: var(--green-light); color: var(--green); }
+
+    /* Stage indicator */
+    .wave-stage-area {
+      flex: 1;
+      padding: 14px 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .stage-pipeline {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 8px;
+    }
+
+    .stage-step {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex: 1;
+    }
+
+    .stage-node {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      background: var(--gray-100);
+      color: var(--gray-400);
+      border: 1.5px solid transparent;
+    }
+
+    .stage-node.completed {
+      background: var(--green-light);
+      color: var(--green);
+      border-color: transparent;
+    }
+
+    .stage-node.current {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(93, 127, 165, 0.15);
+    }
+
+    .stage-node .check { font-size: 10px; }
+
+    .stage-connector {
+      flex: 1;
+      height: 2px;
+      background: var(--gray-200);
+      min-width: 12px;
+      max-width: 40px;
+    }
+
+    .stage-connector.done { background: var(--green); opacity: 0.4; }
+
+    .wave-stage-label {
+      font-size: 12px;
+      color: var(--gray-500);
+    }
+
+    .wave-stage-label strong {
+      color: var(--gray-700);
+    }
+
+    /* Wave stats */
+    .wave-stats-area {
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      border-left: 1px solid var(--gray-200);
+      min-width: 140px;
+    }
+
+    .wave-stat { text-align: center; }
+    .wave-stat .ws-value { font-size: 22px; font-weight: 700; line-height: 1; color: var(--gray-700); }
+    .wave-stat .ws-label { font-size: 10px; color: var(--gray-400); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+
+    /* Wave body */
+    .wave-body { padding: 0; }
+
+    .wave-detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+
+    .wave-detail-grid.single-col {
+      grid-template-columns: 1fr;
+    }
+
+    .wave-detail-section {
+      padding: 16px 24px;
+      border-right: 1px solid var(--gray-200);
+      border-bottom: 1px solid var(--gray-100);
+    }
+
+    .wave-detail-section:nth-child(2n) { border-right: none; }
+    .wave-detail-section:nth-last-child(-n+2) { border-bottom: none; }
+
+    .wds-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.4px; color: var(--gray-400); margin-bottom: 10px;
+    }
+
+    /* Firm list in wave */
+    .wave-firm-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .wave-firm-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--gray-100);
+      font-size: 13px;
+    }
+
+    .wave-firm-row:last-child { border-bottom: none; }
+
+    .wfr-name { font-weight: 500; color: var(--gray-700); }
+
+    .wfr-servicers { display: flex; gap: 4px; }
+
+    .servicer-chip {
+      display: inline-block; padding: 2px 6px; border-radius: 3px;
+      font-size: 10px; font-weight: 600;
+    }
+    .chip-ocean { background: #E8F1F2; color: #4A7C7E; }
+    .chip-valon { background: var(--primary-light); color: var(--primary-dark); }
+    .chip-servicemc { background: var(--purple-light); color: #6B5F96; }
+    .chip-loancare { background: var(--amber-light); color: var(--amber); }
+
+    .wfr-engagement {
+      font-size: 11px;
+      color: var(--gray-500);
+    }
+
+    /* Key dates */
+    .key-dates { display: flex; flex-direction: column; gap: 8px; }
+
+    .key-date-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px;
+    }
+    .kd-label { color: var(--gray-500); }
+    .kd-value { font-weight: 500; color: var(--gray-700); }
+    .kd-value.overdue { color: var(--red); }
+
+    /* Blockers / notes */
+    .wave-note {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .wave-note:last-child { margin-bottom: 0; }
+
+    .note-risk {
+      background: var(--red-light);
+      border: 1px solid #E8CDCB;
+      color: #8B5550;
+    }
+
+    .note-info {
+      background: var(--primary-light);
+      border: 1px solid #D0DCE8;
+      color: var(--primary-dark);
+    }
+
+    .note-icon { font-size: 13px; margin-top: 1px; flex-shrink: 0; }
+    .note-text { line-height: 1.4; }
+    .note-text strong { font-weight: 600; }
+
+    /* Metrics bar */
+    .metrics-row {
+      display: flex;
+      gap: 16px;
+    }
+
+    .metric-card {
+      flex: 1;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+
+    .mc-value { font-size: 20px; font-weight: 700; color: var(--gray-700); }
+    .mc-label { font-size: 10px; color: var(--gray-400); font-weight: 600; text-transform: uppercase; margin-top: 2px; }
+
+    /* Collapsed wave */
+    .wave-collapsed-body {
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--gray-500);
+      font-size: 13px;
+    }
+
+    .expand-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .expand-link:hover { text-decoration: underline; }
+
+    /* Wave footer */
+    .wave-footer {
+      padding: 10px 24px;
+      text-align: center;
+      border-top: 1px solid var(--gray-100);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="icon">LF</div>
+      Law Firm Matcher
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Views</div>
+      <div class="sidebar-item">
+        <span class="nav-icon">&#9776;</span> Firm Directory
+      </div>
+      <div class="sidebar-item active">
+        <span class="nav-icon">&#9664;</span> Onboarding Pipeline
+      </div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Actions</div>
+      <div class="sidebar-item"><span class="nav-icon">&#8635;</span> Sync Google Sheet</div>
+      <div class="sidebar-item"><span class="nav-icon">&#9729;</span> Sync ValonOS Entities</div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-stats">
+      <div class="sidebar-stats-label">Overview</div>
+      <div class="stat-row"><span class="label">Indexed Firms</span><span class="value">128</span></div>
+      <div class="stat-row"><span class="label">Active Waves</span><span class="value">3</span></div>
+      <div class="stat-row"><span class="label">Firms in Pipeline</span><span class="value">70</span></div>
+      <div class="stat-row"><span class="label">Live</span><span class="value" style="color: var(--green)">22</span></div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">Onboarding Pipeline</h1>
+      <button class="btn">&#8615; Export Wave Report</button>
+    </div>
+
+    <div class="filters">
+      <span class="filter-label">Filter:</span>
+      <select class="filter-select active"><option>Ocean</option></select>
+      <select class="filter-select"><option>All Waves</option></select>
+    </div>
+
+    <!-- Forecast Banner -->
+    <div class="forecast-banner">
+      <div class="forecast-main">
+        <div class="forecast-label">Onboarding Forecast</div>
+        <div class="forecast-question">How many firms will be onboarded by go-live?</div>
+        <select class="forecast-date-select">
+          <option>Apr 15, 2026 — Wave 1 go-live</option>
+          <option>May 30, 2026 — Wave 2 go-live</option>
+          <option>Jul 15, 2026 — Wave 3 go-live</option>
+          <option>Custom date...</option>
+        </select>
+      </div>
+      <div class="forecast-numbers">
+        <div class="forecast-stat">
+          <div class="fs-value">35</div>
+          <div class="fs-label">Firms in wave</div>
+        </div>
+        <div class="forecast-divider"></div>
+        <div class="forecast-stat">
+          <div class="fs-value">25<span class="fs-total"> days</span></div>
+          <div class="fs-label">Until go-live</div>
+        </div>
+        <div class="forecast-divider"></div>
+        <div class="forecast-stat">
+          <div class="fs-value" style="font-size: 22px;">Training</div>
+          <div class="fs-label">Current stage</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wave 1 — expanded, in Training -->
+    <div class="wave-section">
+      <div class="wave-header">
+        <div class="wave-title-area">
+          <div class="wave-title">Wave 1</div>
+          <div class="wave-date">Go-live: Apr 15, 2026</div>
+          <span class="wave-countdown countdown-urgent">26 days left</span>
+        </div>
+        <div class="wave-stage-area">
+          <div class="stage-pipeline">
+            <div class="stage-step">
+              <div class="stage-node completed"><span class="check">&#10003;</span> Firm Collection</div>
+              <div class="stage-connector done"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node completed"><span class="check">&#10003;</span> Dedup & Mapping</div>
+              <div class="stage-connector done"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node completed"><span class="check">&#10003;</span> Configuration</div>
+              <div class="stage-connector done"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node current">Training</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Go-Live</div>
+            </div>
+          </div>
+          <div class="wave-stage-label">Currently in <strong>Training</strong> — 35 firms, target go-live Apr 15</div>
+        </div>
+        <div class="wave-stats-area">
+          <div class="wave-stat">
+            <div class="ws-value">35</div>
+            <div class="ws-label">Firms</div>
+          </div>
+          <div class="wave-stat">
+            <div class="ws-value" style="color: var(--green)">27</div>
+            <div class="ws-label">On Track</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wave-body">
+        <div class="wave-detail-grid">
+          <!-- Firms -->
+          <div class="wave-detail-section">
+            <div class="wds-title">Firms in this wave</div>
+            <div class="wave-firm-list">
+              <div class="wave-firm-row">
+                <span class="wfr-name">Weltman Weinberg & Reis</span>
+                <div class="wfr-servicers">
+                  <span class="servicer-chip chip-ocean">Ocean</span>
+                  <span class="servicer-chip chip-valon">Valon</span>
+                  <span class="servicer-chip chip-servicemc">SvcMac</span>
+                </div>
+              </div>
+              <div class="wave-firm-row">
+                <span class="wfr-name">Albertelli Law</span>
+                <div class="wfr-servicers">
+                  <span class="servicer-chip chip-ocean">Ocean</span>
+                  <span class="servicer-chip chip-valon">Valon</span>
+                </div>
+              </div>
+              <div class="wave-firm-row">
+                <span class="wfr-name">McCalla Raymer Leibert Pierce</span>
+                <div class="wfr-servicers">
+                  <span class="servicer-chip chip-ocean">Ocean</span>
+                  <span class="servicer-chip chip-servicemc">SvcMac</span>
+                </div>
+              </div>
+              <div class="wave-firm-row">
+                <span class="wfr-name">Shapiro & DeNardo</span>
+                <div class="wfr-servicers">
+                  <span class="servicer-chip chip-ocean">Ocean</span>
+                </div>
+              </div>
+              <div class="wave-firm-row">
+                <span class="wfr-name">Brock & Scott</span>
+                <div class="wfr-servicers">
+                  <span class="servicer-chip chip-ocean">Ocean</span>
+                  <span class="servicer-chip chip-valon">Valon</span>
+                </div>
+              </div>
+              <div class="wave-firm-row">
+                <span class="wfr-name">Padgett Law Group</span>
+                <div class="wfr-servicers">
+                  <span class="servicer-chip chip-ocean">Ocean</span>
+                  <span class="servicer-chip chip-loancare">LoanCare</span>
+                </div>
+              </div>
+              <div class="wave-firm-row" style="padding-top: 8px;">
+                <span class="expand-link">Show all 35 firms &#8595;</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Key Dates -->
+          <div class="wave-detail-section">
+            <div class="wds-title">Key Dates</div>
+            <div class="key-dates">
+              <div class="key-date-row">
+                <span class="kd-label">Firm list finalized</span>
+                <span class="kd-value">Feb 1, 2026</span>
+              </div>
+              <div class="key-date-row">
+                <span class="kd-label">Dedup completed</span>
+                <span class="kd-value">Feb 20, 2026</span>
+              </div>
+              <div class="key-date-row">
+                <span class="kd-label">Configuration complete</span>
+                <span class="kd-value">Mar 10, 2026</span>
+              </div>
+              <div class="key-date-row">
+                <span class="kd-label">Go-live</span>
+                <span class="kd-value" style="font-weight: 700;">Apr 15, 2026</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wave 2 — in Dedup & Mapping -->
+    <div class="wave-section">
+      <div class="wave-header">
+        <div class="wave-title-area">
+          <div class="wave-title">Wave 2</div>
+          <div class="wave-date">Go-live: May 30, 2026</div>
+          <span class="wave-countdown countdown-ok">71 days left</span>
+        </div>
+        <div class="wave-stage-area">
+          <div class="stage-pipeline">
+            <div class="stage-step">
+              <div class="stage-node completed"><span class="check">&#10003;</span> Firm Collection</div>
+              <div class="stage-connector done"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node current">Dedup & Mapping</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Configuration</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Training</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Go-Live</div>
+            </div>
+          </div>
+          <div class="wave-stage-label">Currently in <strong>Dedup & Mapping</strong> — 7 of 25 firms still need to be indexed and matched</div>
+        </div>
+        <div class="wave-stats-area">
+          <div class="wave-stat">
+            <div class="ws-value">25</div>
+            <div class="ws-label">Firms</div>
+          </div>
+          <div class="wave-stat">
+            <div class="ws-value" style="color: var(--green)">18</div>
+            <div class="ws-label">On Track</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wave-body">
+        <div class="wave-collapsed-body">
+          <span>25 firms — 18 indexed, 7 pending dedup. Engagement outreach begins Apr 1.</span>
+          <span class="expand-link">Expand details &#8595;</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wave 3 — in Firm Collection -->
+    <div class="wave-section">
+      <div class="wave-header">
+        <div class="wave-title-area">
+          <div class="wave-title">Wave 3</div>
+          <div class="wave-date">Go-live: Jul 15, 2026</div>
+          <span class="wave-countdown countdown-good">117 days left</span>
+        </div>
+        <div class="wave-stage-area">
+          <div class="stage-pipeline">
+            <div class="stage-step">
+              <div class="stage-node current">Firm Collection</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Dedup & Mapping</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Configuration</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Training</div>
+              <div class="stage-connector"></div>
+            </div>
+            <div class="stage-step">
+              <div class="stage-node">Go-Live</div>
+            </div>
+          </div>
+          <div class="wave-stage-label">Currently in <strong>Firm Collection</strong> — Ocean providing initial firm lists</div>
+        </div>
+        <div class="wave-stats-area">
+          <div class="wave-stat">
+            <div class="ws-value">10</div>
+            <div class="ws-label">Firms</div>
+          </div>
+          <div class="wave-stat">
+            <div class="ws-value" style="color: var(--green)">10</div>
+            <div class="ws-label">On Track</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wave-body">
+        <div class="wave-collapsed-body">
+          <span>10 firms expected — list still being finalized. 117 days until go-live.</span>
+          <span class="expand-link">Expand details &#8595;</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</body>
+</html>
